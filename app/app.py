@@ -60,12 +60,9 @@ for case in df_events["case_id"].unique():
 # Aggregate repeated flows
 df_flows = df_flows.groupby(["source","target"], as_index=False).sum()
 df_flows["count"] = pd.to_numeric(df_flows["count"])
-
-# Total flows and percentage
 total_flows = df_flows["count"].sum()
 df_flows["percentage"] = (df_flows["count"] / total_flows * 100).round(1)
 
-# Create Sankey chart
 all_nodes = list(set(df_flows["source"]).union(set(df_flows["target"])))
 node_indices = {node:i for i,node in enumerate(all_nodes)}
 
@@ -85,7 +82,37 @@ fig_sankey = go.Figure(data=[go.Sankey(
     )
 )])
 fig_sankey.update_layout(title_text="Sample Process Flow Map", font_size=12)
-st.plotly_chart(fig_sankey, use_container_width=True)
+
+# --------------------------
+# 2️⃣ Process Map (Gantt-style Timeline)
+# --------------------------
+st.subheader("Process Timeline (Gantt-style)")
+
+# Prepare start and end times per activity per case
+df_events_sorted = df_events.sort_values(by=["case_id", "timestamp"])
+df_events_sorted["start_time"] = df_events_sorted["timestamp"]
+df_events_sorted["end_time"] = df_events_sorted.groupby("case_id")["timestamp"].shift(-1)
+df_events_sorted["end_time"].fillna(df_events_sorted["start_time"] + pd.Timedelta(hours=1), inplace=True)
+
+fig_gantt = px.timeline(
+    df_events_sorted,
+    x_start="start_time",
+    x_end="end_time",
+    y="case_id",
+    color="activity",
+    text="resource"
+)
+fig_gantt.update_yaxes(autorange="reversed")
+fig_gantt.update_layout(title_text="Process Timeline per Case", font_size=12)
+
+# --------------------------
+# Display both charts side by side
+# --------------------------
+col1, col2 = st.columns(2)
+with col1:
+    st.plotly_chart(fig_sankey, use_container_width=True)
+with col2:
+    st.plotly_chart(fig_gantt, use_container_width=True)
 
 # --------------------------
 # 3️⃣ Mock ML Predictions
