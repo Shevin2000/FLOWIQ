@@ -3,42 +3,38 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import numpy as np
 
-# --------------------------
-# Page Setup
-# --------------------------
 st.set_page_config(page_title="FLOWIQ Prototype Dashboard", layout="wide")
 st.title("FLOWIQ Prototype Dashboard")
 st.markdown("Hybrid AI framework: Process Mining → ML Prediction → Optimization")
 
 # --------------------------
-# 1️⃣ Sample Event Log (More Data)
+# 1️⃣ Sample Event Log (Realistic Data)
 # --------------------------
 st.subheader("Event Log (Sample Data)")
 
-event_data = {
-    "case_id": [1,1,1,2,2,2,3,3,3,3,4,4,4,5,5,5,5,6,6,6],
-    "activity": [
-        "A","B","C",
-        "A","C","D",
-        "A","B","B","C",
-        "B","C","D",
-        "A","B","C","D",
-        "C","B","D"
-    ],
-    "timestamp": pd.to_datetime([
-        "2025-10-01 08:00","2025-10-01 10:00","2025-10-01 12:00",
-        "2025-10-01 09:00","2025-10-01 12:00","2025-10-01 15:00",
-        "2025-10-01 07:30","2025-10-01 08:30","2025-10-01 09:30","2025-10-01 11:00",
-        "2025-10-01 08:00","2025-10-01 09:00","2025-10-01 11:00",
-        "2025-10-01 07:00","2025-10-01 08:00","2025-10-01 09:30","2025-10-01 11:30",
-        "2025-10-01 08:00","2025-10-01 09:00","2025-10-01 10:30"
-    ]),
-    "resource": ["R1","R2","R3","R1","R3","R2","R2","R2","R1","R3",
-                 "R1","R3","R2","R2","R1","R2","R3","R3","R2","R1"]
-}
+# Define activities
+activities = ["Receive Order", "Check Inventory", "Process Payment", "Pack Items", "Ship Items", "Close Case"]
+resources = ["Alice", "Bob", "Charlie", "David"]
 
-df_events = pd.DataFrame(event_data)
+# Create sample cases
+np.random.seed(42)
+cases = []
+for case_id in range(1, 13):  # 12 cases
+    start_time = pd.Timestamp("2025-10-01 08:00") + pd.Timedelta(hours=np.random.randint(0, 5))
+    for i, activity in enumerate(activities):
+        duration = pd.Timedelta(hours=np.random.randint(1, 4))
+        cases.append({
+            "case_id": case_id,
+            "activity": activity,
+            "start_time": start_time,
+            "end_time": start_time + duration,
+            "resource": np.random.choice(resources)
+        })
+        start_time += duration
+
+df_events = pd.DataFrame(cases)
 st.dataframe(df_events)
 
 # --------------------------
@@ -46,25 +42,23 @@ st.dataframe(df_events)
 # --------------------------
 st.subheader("Process Map (Activity Flow)")
 
-# Build activity flows (source -> target) with counts
-df_flows = pd.DataFrame(columns=["source","target","count"])
+# Build activity flows
+df_flows = pd.DataFrame(columns=["source", "target", "count"])
 for case in df_events["case_id"].unique():
-    case_activities = df_events[df_events["case_id"]==case]["activity"].tolist()
-    for i in range(len(case_activities)-1):
+    case_activities = df_events[df_events["case_id"] == case]["activity"].tolist()
+    for i in range(len(case_activities) - 1):
         df_flows = pd.concat([df_flows, pd.DataFrame({
-            "source":[case_activities[i]],
-            "target":[case_activities[i+1]],
-            "count":[1]
+            "source": [case_activities[i]],
+            "target": [case_activities[i + 1]],
+            "count": [1]
         })], ignore_index=True)
 
 # Aggregate repeated flows
-df_flows = df_flows.groupby(["source","target"], as_index=False).sum()
-df_flows["count"] = pd.to_numeric(df_flows["count"])
-total_flows = df_flows["count"].sum()
-df_flows["percentage"] = (df_flows["count"] / total_flows * 100).round(1)
+df_flows = df_flows.groupby(["source", "target"], as_index=False).sum()
 
+# Sankey nodes
 all_nodes = list(set(df_flows["source"]).union(set(df_flows["target"])))
-node_indices = {node:i for i,node in enumerate(all_nodes)}
+node_indices = {node: i for i, node in enumerate(all_nodes)}
 
 fig_sankey = go.Figure(data=[go.Sankey(
     node=dict(
@@ -77,51 +71,34 @@ fig_sankey = go.Figure(data=[go.Sankey(
     link=dict(
         source=[node_indices[s] for s in df_flows["source"]],
         target=[node_indices[t] for t in df_flows["target"]],
-        value=df_flows["count"],
-        label=[f"{c} times ({p}%)" for c,p in zip(df_flows["count"], df_flows["percentage"])]
+        value=df_flows["count"]
     )
 )])
 fig_sankey.update_layout(title_text="Sample Process Flow Map", font_size=12)
+st.plotly_chart(fig_sankey, use_container_width=True)
 
 # --------------------------
-# 2️⃣ Process Map (Gantt-style Timeline)
+# 3️⃣ Gantt Chart (Timeline)
 # --------------------------
-st.subheader("Process Timeline (Gantt-style)")
-
-# Prepare start and end times per activity per case
-df_events_sorted = df_events.sort_values(by=["case_id", "timestamp"])
-df_events_sorted["start_time"] = df_events_sorted["timestamp"]
-df_events_sorted["end_time"] = df_events_sorted.groupby("case_id")["timestamp"].shift(-1)
-df_events_sorted["end_time"].fillna(df_events_sorted["start_time"] + pd.Timedelta(hours=1), inplace=True)
-
+st.subheader("Process Timeline (Gantt Chart)")
 fig_gantt = px.timeline(
-    df_events_sorted,
+    df_events,
     x_start="start_time",
     x_end="end_time",
     y="case_id",
     color="activity",
-    text="resource"
+    text="resource",
 )
 fig_gantt.update_yaxes(autorange="reversed")
-fig_gantt.update_layout(title_text="Process Timeline per Case", font_size=12)
+st.plotly_chart(fig_gantt, use_container_width=True)
 
 # --------------------------
-# Display both charts side by side
-# --------------------------
-col1, col2 = st.columns(2)
-with col1:
-    st.plotly_chart(fig_sankey, use_container_width=True)
-with col2:
-    st.plotly_chart(fig_gantt, use_container_width=True)
-
-# --------------------------
-# 3️⃣ Mock ML Predictions
+# 4️⃣ Mock ML Predictions
 # --------------------------
 st.subheader("Predicted Remaining Time (hours)")
-
 predictions = pd.DataFrame({
-    "case_id": [1,2,3,4,5,6],
-    "predicted_remaining_time": [2, 3, 1.5, 2.5, 3, 1]
+    "case_id": df_events["case_id"].unique(),
+    "predicted_remaining_time": np.random.uniform(1, 5, size=df_events["case_id"].nunique()).round(1)
 })
 st.dataframe(predictions)
 
@@ -135,35 +112,32 @@ fig_pred = px.bar(
 st.plotly_chart(fig_pred, use_container_width=True)
 
 # --------------------------
-# 4️⃣ Mock Optimization Results
+# 5️⃣ Mock Optimization Results
 # --------------------------
 st.subheader("Optimized Schedule / Resource Allocation")
-
 optimization = pd.DataFrame({
-    "case_id": [3,1,4,2,5,6],
-    "priority": [1,2,3,4,5,6],
-    "assigned_resource": ["R2","R1","R3","R1","R2","R3"]
+    "case_id": df_events["case_id"].unique(),
+    "priority": np.random.permutation(df_events["case_id"].nunique()) + 1,
+    "assigned_resource": np.random.choice(resources, df_events["case_id"].nunique())
 })
 st.dataframe(optimization)
 
 # --------------------------
-# 5️⃣ Baseline Comparison (FIFO)
+# 6️⃣ Baseline Comparison (FIFO)
 # --------------------------
 st.subheader("Baseline (FIFO) vs Optimized Priority")
-
 baseline = pd.DataFrame({
-    "case_id": [1,2,3,4,5,6],
-    "baseline_priority": [1,2,3,4,5,6]
+    "case_id": df_events["case_id"].unique(),
+    "baseline_priority": range(1, df_events["case_id"].nunique() + 1)
 })
 comparison = baseline.merge(optimization, on="case_id")
 st.dataframe(comparison)
 st.markdown("✅ Lower priority number = higher scheduling priority in optimized plan")
 
 # --------------------------
-# 6️⃣ Summary Metrics
+# 7️⃣ Summary Metrics
 # --------------------------
 st.subheader("Summary Metrics")
-
 metrics = pd.DataFrame({
     "Metric": ["Average Predicted Time", "Max Predicted Time", "Min Predicted Time"],
     "Value": [predictions["predicted_remaining_time"].mean(),
