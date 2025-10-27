@@ -4,6 +4,9 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 
+# --------------------------
+# Page Setup
+# --------------------------
 st.set_page_config(page_title="FLOWIQ Prototype Dashboard", layout="wide")
 st.title("FLOWIQ Prototype Dashboard")
 st.markdown("Hybrid AI framework: Process Mining → ML Prediction → Optimization")
@@ -36,25 +39,17 @@ event_data = {
 }
 
 df_events = pd.DataFrame(event_data)
-
-# Optional: filter by case
-selected_case = st.selectbox("Select Case to Display", ["All"] + list(df_events["case_id"].unique()))
-if selected_case != "All":
-    df_display = df_events[df_events["case_id"] == selected_case]
-else:
-    df_display = df_events
-
-st.dataframe(df_display)
+st.dataframe(df_events)
 
 # --------------------------
-# 2️⃣ Process Map (Sankey Chart with Percentages)
+# 2️⃣ Process Map (Sankey Chart)
 # --------------------------
 st.subheader("Process Map (Activity Flow)")
 
-# Build flows
+# Build activity flows (source -> target) with counts
 df_flows = pd.DataFrame(columns=["source","target","count"])
-for case in df_display["case_id"].unique():
-    case_activities = df_display[df_display["case_id"]==case]["activity"].tolist()
+for case in df_events["case_id"].unique():
+    case_activities = df_events[df_events["case_id"]==case]["activity"].tolist()
     for i in range(len(case_activities)-1):
         df_flows = pd.concat([df_flows, pd.DataFrame({
             "source":[case_activities[i]],
@@ -64,6 +59,9 @@ for case in df_display["case_id"].unique():
 
 # Aggregate repeated flows
 df_flows = df_flows.groupby(["source","target"], as_index=False).sum()
+df_flows["count"] = pd.to_numeric(df_flows["count"])
+
+# Total flows and percentage
 total_flows = df_flows["count"].sum()
 df_flows["percentage"] = (df_flows["count"] / total_flows * 100).round(1)
 
@@ -83,11 +81,10 @@ fig_sankey = go.Figure(data=[go.Sankey(
         source=[node_indices[s] for s in df_flows["source"]],
         target=[node_indices[t] for t in df_flows["target"]],
         value=df_flows["count"],
-        customdata=df_flows["percentage"],
-        hovertemplate='Flow: %{source.label} → %{target.label}<br>Cases: %{value}<br>Percentage: %{customdata}%'
+        label=[f"{c} times ({p}%)" for c,p in zip(df_flows["count"], df_flows["percentage"])]
     )
 )])
-fig_sankey.update_layout(title_text="Process Flow Map with Percentages", font_size=12)
+fig_sankey.update_layout(title_text="Sample Process Flow Map", font_size=12)
 st.plotly_chart(fig_sankey, use_container_width=True)
 
 # --------------------------
