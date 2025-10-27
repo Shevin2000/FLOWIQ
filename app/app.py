@@ -36,17 +36,25 @@ event_data = {
 }
 
 df_events = pd.DataFrame(event_data)
-st.dataframe(df_events)
+
+# Optional: filter by case
+selected_case = st.selectbox("Select Case to Display", ["All"] + list(df_events["case_id"].unique()))
+if selected_case != "All":
+    df_display = df_events[df_events["case_id"] == selected_case]
+else:
+    df_display = df_events
+
+st.dataframe(df_display)
 
 # --------------------------
-# 2️⃣ Process Map (Sankey Chart)
+# 2️⃣ Process Map (Sankey Chart with Percentages)
 # --------------------------
 st.subheader("Process Map (Activity Flow)")
 
-# Build activity flows (source -> target) with counts
+# Build flows
 df_flows = pd.DataFrame(columns=["source","target","count"])
-for case in df_events["case_id"].unique():
-    case_activities = df_events[df_events["case_id"]==case]["activity"].tolist()
+for case in df_display["case_id"].unique():
+    case_activities = df_display[df_display["case_id"]==case]["activity"].tolist()
     for i in range(len(case_activities)-1):
         df_flows = pd.concat([df_flows, pd.DataFrame({
             "source":[case_activities[i]],
@@ -56,6 +64,8 @@ for case in df_events["case_id"].unique():
 
 # Aggregate repeated flows
 df_flows = df_flows.groupby(["source","target"], as_index=False).sum()
+total_flows = df_flows["count"].sum()
+df_flows["percentage"] = (df_flows["count"] / total_flows * 100).round(1)
 
 # Create Sankey chart
 all_nodes = list(set(df_flows["source"]).union(set(df_flows["target"])))
@@ -72,10 +82,12 @@ fig_sankey = go.Figure(data=[go.Sankey(
     link=dict(
         source=[node_indices[s] for s in df_flows["source"]],
         target=[node_indices[t] for t in df_flows["target"]],
-        value=df_flows["count"]
+        value=df_flows["count"],
+        customdata=df_flows["percentage"],
+        hovertemplate='Flow: %{source.label} → %{target.label}<br>Cases: %{value}<br>Percentage: %{customdata}%'
     )
 )])
-fig_sankey.update_layout(title_text="Sample Process Flow Map", font_size=12)
+fig_sankey.update_layout(title_text="Process Flow Map with Percentages", font_size=12)
 st.plotly_chart(fig_sankey, use_container_width=True)
 
 # --------------------------
